@@ -128,44 +128,149 @@ __global__ void convertToDbKernel(const float* input, float* output, float min_d
 }
 
 // 窗口函数应用
+// 窗口函数应用
 void applyKaiserWindow(const cufftComplex* Rx, cufftComplex* Rxw, int burst, int pulses, float beta) {
+    // 计算数据总大小
     int size = burst * pulses;
-    int blockSize = 256;
-    int numBlocks = (size + blockSize - 1) / blockSize;
     
-    // 在主机上生成凯撒窗口
-    float* h_win_burst = new float[burst];
-    float* h_win_pulses = new float[pulses];
+    // 打印处理信息
+    std::cout << "应用Kaiser窗口函数: " << burst << "x" << pulses << " 矩阵" << std::endl;
     
-    generate_kaiser_window(h_win_burst, burst, beta);
-    generate_kaiser_window(h_win_pulses, pulses, beta);
-    
-    // 将窗口复制到设备
-    float *d_win_burst, *d_win_pulses, *d_window;
-    create_device_array(&d_win_burst, burst);
-    create_device_array(&d_win_pulses, pulses);
-    create_device_array(&d_window, size);
-    
-    cudaMemcpy(d_win_burst, h_win_burst, burst * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_win_pulses, h_win_pulses, pulses * sizeof(float), cudaMemcpyHostToDevice);
-    
-    // 生成2D窗口
-    dim3 blockDim(16, 16);
-    dim3 gridDim((pulses + blockDim.x - 1) / blockDim.x, (burst + blockDim.y - 1) / blockDim.y);
-    
-    generate2DKaiserWindowKernel<<<gridDim, blockDim>>>(d_window, d_win_burst, d_win_pulses, burst, pulses);
-    CHECK_CUDA_ERROR(cudaGetLastError());
-    
-    // 应用窗口
-    applyKaiserWindowKernel<<<numBlocks, blockSize>>>(Rx, Rxw, d_window, size);
-    CHECK_CUDA_ERROR(cudaGetLastError());
-    
-    // 清理
-    destroy_device_array(d_win_burst);
-    destroy_device_array(d_win_pulses);
-    destroy_device_array(d_window);
-    delete[] h_win_burst;
-    delete[] h_win_pulses;
+    try {
+        // 在主机上生成Kaiser窗口
+        float* h_win_burst = new float[burst];
+        float* h_win_pulses = new float[pulses];
+        
+        // 生成各维度的Kaiser窗口
+        generate_kaiser_window(h_win_burst, burst, beta);
+        generate_kaiser_window(h_win_pulses, pulses, beta);
+        
+        // 检查是否有足够的GPU内存
+        size_t free_mem, total_mem;
+        cudaMemGetInfo(&free_mem, &total_mem);
+        std::cout << "GPU内存情况: " << free_mem / (1024*1024) << "MB 可用，共 " 
+                  << total_mem / (1024*1024) << "MB" << std::endl;
+        
+        // 计算所需内存
+        size_t required_mem = size * sizeof(float) + burst * sizeof(float) + pulses * sizeof(float);
+        std::cout << "估计所需内存: " << required_mem / (1024*1024) << "MB" << std::endl;
+        
+        if (required_mem > free_mem) {
+            throw std::runtime_error("GPU内存不足，无法处理当前数据大小");
+        }
+        
+        // 在设备上分配内存
+        float *d_win_burst = nullptr, *d_win_pulses = nullptr, *d_window = nullptr;
+        
+        cudaError_t err = cudaMalloc(&d_win_burst, burst * sizeof(float));
+        if (err != cudaSuccess) {
+            throw std::runtime_error(std::string("无法分配d_win_burst内存: ") + cudaGetErrorString(err));
+        }
+        
+        err = cudaMalloc(&d_win_pulses, pulses * sizeof(float));
+        if (err != cudaSuccess) {
+            cudaFree(d_win_burst);
+            throw std::runtime_error(std::string("无法分配d_win_pulses内存: ") + cudaGetErrorString(err));
+        }
+        
+        err = cudaMalloc(&d_window, size * sizeof(float));
+        if (err != cudaSuccess) {
+            cudaFree(d_win_burst);
+            cudaFree(d_win_pulses);
+            throw std::runtime_error(std::string("无法分配d_window内存: ") + cudaGetErrorString(err));
+        }
+        
+        // 将窗口数据从主机复制到设备
+        err = cudaMemcpy(d_win_burst, h_win_burst, burst * sizeof(float), cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) {
+            cudaFree(d_win_burst);
+            cudaFree(d_win_pulses);
+            cudaFree(d_window);
+            throw std::runtime_error(std::string("无法复制数据到d_win_burst: ") + cudaGetErrorString(err));
+        }
+        
+        err = cudaMemcpy(d_win_pulses, h_win_pulses, pulses * sizeof(float), cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) {
+            cudaFree(d_win_burst);
+            cudaFree(d_win_pulses);
+            cudaFree(d_window);
+            throw std::runtime_error(std::string("无法复制数据到d_win_pulses: ") + cudaGetErrorString(err));
+        }
+        
+        // 使用较小的线程块以减少资源使用
+        dim3 blockDim(16, 16);
+        
+        // 计算适当的网格尺寸
+        dim3 gridDim((pulses + blockDim.x - 1) / blockDim.x, 
+                     (burst + blockDim.y - 1) / blockDim.y);
+        
+        std::cout << "启动生成窗口内核，网格尺寸: " << gridDim.x << "x" << gridDim.y 
+                  << ", 块尺寸: " << blockDim.x << "x" << blockDim.y << std::endl;
+        
+        // 生成2D窗口
+        generate2DKaiserWindowKernel<<<gridDim, blockDim>>>(d_window, d_win_burst, d_win_pulses, burst, pulses);
+        
+        // 同步以确保窗口生成完成
+        err = cudaDeviceSynchronize();
+        if (err != cudaSuccess) {
+            cudaFree(d_win_burst);
+            cudaFree(d_win_pulses);
+            cudaFree(d_window);
+            throw std::runtime_error(std::string("窗口生成内核执行失败: ") + cudaGetErrorString(err));
+        }
+        
+        // 确认没有错误发生
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            cudaFree(d_win_burst);
+            cudaFree(d_win_pulses);
+            cudaFree(d_window);
+            throw std::runtime_error(std::string("窗口生成后发生错误: ") + cudaGetErrorString(err));
+        }
+        
+        // 应用窗口的内核配置
+        int blockSize = 256;
+        int numBlocks = (size + blockSize - 1) / blockSize;
+        
+        std::cout << "启动应用窗口内核，块数: " << numBlocks << ", 块大小: " << blockSize << std::endl;
+        
+        // 应用窗口
+        applyKaiserWindowKernel<<<numBlocks, blockSize>>>(Rx, Rxw, d_window, size);
+        
+        // 同步以确保窗口应用完成
+        err = cudaDeviceSynchronize();
+        if (err != cudaSuccess) {
+            cudaFree(d_win_burst);
+            cudaFree(d_win_pulses);
+            cudaFree(d_window);
+            throw std::runtime_error(std::string("窗口应用内核执行失败: ") + cudaGetErrorString(err));
+        }
+        
+        // 最终错误检查
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            cudaFree(d_win_burst);
+            cudaFree(d_win_pulses);
+            cudaFree(d_window);
+            throw std::runtime_error(std::string("窗口应用后发生错误: ") + cudaGetErrorString(err));
+        }
+        
+        // 清理设备内存
+        cudaFree(d_win_burst);
+        cudaFree(d_win_pulses);
+        cudaFree(d_window);
+        
+        // 清理主机内存
+        delete[] h_win_burst;
+        delete[] h_win_pulses;
+        
+        std::cout << "Kaiser窗口应用完成" << std::endl;
+        
+    } catch (const std::exception& e) {
+        // 清理主机内存（如果已分配）
+        std::cerr << "应用Kaiser窗口时发生错误: " << e.what() << std::endl;
+        throw; // 重新抛出异常以便上层函数处理
+    }
 }
 
 // 执行逆FFT

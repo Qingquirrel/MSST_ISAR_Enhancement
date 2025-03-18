@@ -31,8 +31,8 @@ int main(int argc, char* argv[]) {
         
         // 设置MSST参数 (根据你的MATLAB代码)
         MsstParams msst_params;
-        msst_params.burst = 128;         // 行数 (调整为实际值)
-        msst_params.pulses = 256;        // 列数 (调整为实际值)
+        msst_params.burst = 500;         // 行数 (调整为实际值)
+        msst_params.pulses = 250;        // 列数 (调整为实际值)
         msst_params.beta = 5.0f;         // Kaiser窗口参数
         msst_params.f0 = 0.5f;           // Morlet小波中心频率
         msst_params.num_scales = 512;    // 小波尺度数量
