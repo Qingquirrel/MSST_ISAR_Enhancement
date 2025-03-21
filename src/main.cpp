@@ -75,8 +75,8 @@ int main(int argc, char* argv[]) {
         processMSST(h_Rx, h_Enhanced_ISAR, msst_params);
         
         // 应用创新算法增强
-        std::cout << "Applying innovation algorithms..." << std::endl;
-        applyInnovations(h_Rx, h_Enhanced_ISAR, msst_params, innovation_params);
+       // std::cout << "Applying innovation algorithms..." << std::endl;
+        //applyInnovations(h_Rx, h_Enhanced_ISAR, msst_params, innovation_params);
         
         // 保存结果
         std::cout << "Saving enhanced ISAR data to: " << output_file << std::endl;

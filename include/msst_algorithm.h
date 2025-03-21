@@ -3,6 +3,7 @@
 
 #include <cufft.h>
 #include <vector>
+#include <cfloat>  // 添加这个头文件来解决 FLT_MAX 未定义的问题
 
 // MSST参数结构体
 struct MsstParams {
@@ -19,23 +20,29 @@ struct MsstParams {
 };
 
 // MSST处理函数 - 主函数
-void processMSST(const cufftComplex* Rx, float* Enhanced_ISAR, const MsstParams& params);
+// 修改参数类型以匹配 msst_algorithm.cu 中的实现
+void processMSST(cufftComplex* h_Rx, float* h_Enhanced_ISAR, const MsstParams& params);
 
 // 窗口函数应用
-void applyKaiserWindow(const cufftComplex* Rx, cufftComplex* Rxw, int burst, int pulses, float beta);
+// 修改参数名称以匹配实现
+void applyKaiserWindow(cufftComplex* h_Rx, cufftComplex* h_Rxw, int burst, int pulses, float beta);
 
 // 逆FFT获取距离分布
-void performIFFT(const cufftComplex* Rxw, cufftComplex* Es_IFFT, int burst, int pulses);
+// 修改参数名称以匹配实现
+void performIFFT(cufftComplex* h_Rxw, cufftComplex* h_Es_IFFT, int burst, int pulses);
 
 // 多尺度小波变换
-void calculateMorletWavelet(const cufftComplex* Es_IFFT, float* SST_Image, 
-                           float* scale_weights, const MsstParams& params);
+// 修改参数名称和类型以匹配实现
+void calculateMorletWavelet(cufftComplex* h_Es_IFFT, float* h_SST_Image, 
+                           float* h_scale_weights, const MsstParams& params);
 
 // 融合和增强SST图像
-void fuseAndEnhanceSST(const float* SST_Image, const float* scale_weights, 
-                      float* Enhanced_Rx, const MsstParams& params);
+// 修改参数名称和类型以匹配实现
+void fuseAndEnhanceSST(float* h_SST_Image, float* h_scale_weights, 
+                      float* h_Enhanced_Rx, const MsstParams& params);
 
 // 生成最终ISAR图像
-void generateISARImage(const float* Enhanced_Rx, float* Enhanced_ISAR, const MsstParams& params);
+// 修改参数名称以匹配实现
+void generateISARImage(float* h_Enhanced_Rx, float* h_Enhanced_ISAR, const MsstParams& params);
 
 #endif // MSST_ALGORITHM_H

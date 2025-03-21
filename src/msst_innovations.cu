@@ -259,8 +259,8 @@ __global__ void computePatchSimilarityKernel(const float* patches, float* weight
         int half_search = search_window / 2;
         int central_idx = y * cols + x;
         
-      // 修改后 - 使用适当的类型转换
-const float *central_patch = &patches[central_idx * patch_area];
+        // 获取中心块
+        const float *central_patch = &patches[central_idx * patch_area];
         
         // 在搜索窗口内计算相似度
         for (int sy = -half_search; sy <= half_search; sy++) {
@@ -271,10 +271,7 @@ const float *central_patch = &patches[central_idx * patch_area];
                 // 边界检查
                 if (search_y >= 0 && search_y < rows && search_x >= 0 && search_x < cols) {
                     int search_idx = search_y * cols + search_x;
-                    // 修改变量声明为const
-const float* search_patch = &patches[search_idx * patch_area];
-
-// 确保所有相关代码都使用const指针
+                    const float* search_patch = &patches[search_idx * patch_area];
                     
                     // 计算两个块之间的欧几里得距离
                     float distance = 0.0f;
@@ -562,14 +559,14 @@ __global__ void waveletReconstructKernel(const cufftComplex* input, cufftComplex
     }
 }
 
-  // 使用一个简化的核函数来缩放结果
+// 使用一个简化的核函数来缩放结果
 __global__ void scaleComplexSignalKernel(cufftComplex* signal, float scale, int size) {
-        int idx = blockIdx.x * blockDim.x + threadIdx.x;
-        if (idx < size) {
-            signal[idx].x *= scale;
-            signal[idx].y *= scale;
-        }
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        signal[idx].x *= scale;
+        signal[idx].y *= scale;
     }
+}
 
 // 联合时频域去噪实现
 void jointTimeFrequencyDenoising(cufftComplex* signal, int size, 
@@ -602,6 +599,7 @@ void jointTimeFrequencyDenoising(cufftComplex* signal, int size,
     
     // 缩放因子 (CUFFT不会自动缩放)
     float scale = 1.0f / size;
+    
     // 调用缩放核函数
     scaleComplexSignalKernel<<<numBlocks, blockSize>>>(d_time_freq_signal, scale, size);
     CHECK_CUDA_ERROR(cudaGetLastError());
@@ -612,7 +610,7 @@ void jointTimeFrequencyDenoising(cufftComplex* signal, int size,
             d_time_freq_signal, d_wavelet_coeffs, size, level);
         CHECK_CUDA_ERROR(cudaGetLastError());
         
-        // 在小波域应用阈值去噪
+ // 在小波域应用阈值去噪
         frequencyThresholdingKernel<<<numBlocks, blockSize>>>(
             d_wavelet_coeffs, threshold / (level + 1), size);
         CHECK_CUDA_ERROR(cudaGetLastError());
