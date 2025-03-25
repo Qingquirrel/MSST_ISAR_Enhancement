@@ -17,6 +17,7 @@ __global__ void analyzeSpectralDistributionKernel(const cufftComplex* input, flo
     }
 }
 
+//多级并行分解策略
 // 计算最优尺度分布的CUDA核函数
 __global__ void computeOptimalScalesKernel(const float* spectrum, float* scales, 
                                          int size, int num_scales, float min_scale, float max_scale) {
@@ -75,7 +76,8 @@ void adaptiveScaleOptimization(const cufftComplex* input, float* output,
     // 分析信号频谱分布
     analyzeSpectralDistributionKernel<<<numBlocks, blockSize>>>(input, d_spectrum, size);
     CHECK_CUDA_ERROR(cudaGetLastError());
-    
+
+    //重叠块处理策略与边界化处理优化
     // 计算最优尺度分布
     computeOptimalScalesKernel<<<scaleBlocks, blockSize>>>(d_spectrum, optimal_scales, 
                                                         size, num_scales, 1.0f, 128.0f);
@@ -136,7 +138,7 @@ __global__ void computeProbabilityDistributionKernel(const float* input, float* 
         prob_dist[idx] = 0.0f;
     }
 }
-
+//基于共享内存优化的熵计算加速
 // 计算信息熵的CUDA核函数
 __global__ void computeEntropyKernel(const float* prob_dist, float* entropy, int size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -164,7 +166,7 @@ __global__ void computeEntropyKernel(const float* prob_dist, float* entropy, int
         atomicAdd(entropy, local_entropy[0]);
     }
 }
-
+//多权重熵优化融合策略
 // 应用熵引导权重的CUDA核函数
 __global__ void applyEntropyGuidedWeightsKernel(const float* input, float* output, 
                                               float entropy, float entropy_factor, int size) {
